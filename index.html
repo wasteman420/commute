@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0f172a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Commute">
+  <meta name="mobile-web-app-capable" content="yes">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="icon" href="icon-192.png" type="image/png" sizes="192x192">
+  <link rel="stylesheet" href="styles.css">
+  <title>Commute</title>
+</head>
+<body>
+  <header class="topbar">
+    <h1>Commute</h1>
+    <div class="topbar-right">
+      <span class="countdown" id="countdown" title="Next refresh">--s</span>
+      <button id="refresh-btn" class="icon-btn" aria-label="Refresh now" title="Refresh now">&#x21bb;</button>
+    </div>
+  </header>
+
+  <section class="status-bar" id="status-bar" aria-label="Line status">
+    <div class="status-skeleton"></div>
+    <div class="status-skeleton"></div>
+    <div class="status-skeleton"></div>
+  </section>
+
+  <section class="section">
+    <h2>Tram from Arena</h2>
+    <div class="two-col">
+      <div class="col">
+        <h3>&rarr; East Croydon <span class="sub">Wimbledon / Therapia Lane</span></h3>
+        <div class="rows" id="tram-ecr" data-skeleton="5"></div>
+      </div>
+      <div class="col">
+        <h3>&rarr; Beckenham Junction</h3>
+        <div class="rows" id="tram-bkj" data-skeleton="5"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>National Rail to Victoria</h2>
+    <div class="two-col">
+      <div class="col">
+        <h3>ECR &rarr; VIC</h3>
+        <div class="rows" id="rail-ecr" data-skeleton="5"></div>
+      </div>
+      <div class="col">
+        <h3>BKJ &rarr; VIC</h3>
+        <div class="rows" id="rail-bkj" data-skeleton="5"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>Victoria &rarr; South Kensington</h2>
+    <div class="two-col">
+      <div class="col">
+        <h3>52 bus <span class="sub">outbound</span></h3>
+        <div class="rows" id="bus-52" data-skeleton="5"></div>
+      </div>
+      <div class="col">
+        <h3>District / Circle <span class="sub">westbound</span></h3>
+        <div class="rows" id="tube-vic" data-skeleton="5"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="settings">
+    <button class="settings-toggle" id="settings-toggle" aria-expanded="false" aria-controls="settings-panel">
+      <span>Settings</span>
+      <span class="chev">&#x25be;</span>
+    </button>
+    <div class="settings-panel" id="settings-panel" hidden>
+      <label class="field">
+        <span>Darwin token <em>National Rail</em></span>
+        <input type="text" id="darwin-token" autocomplete="off" spellcheck="false" placeholder="00000000-0000-0000-0000-000000000000">
+      </label>
+      <label class="field">
+        <span>TfL app key <em>optional</em></span>
+        <input type="text" id="tfl-key" autocomplete="off" spellcheck="false" placeholder="leave blank for unauthenticated access">
+      </label>
+      <div class="settings-actions">
+        <button id="save-settings" class="primary">Save</button>
+        <button id="clear-cache" class="ghost" title="Clear cached Arena stop ID">Clear cache</button>
+      </div>
+      <p class="hint">
+        Stored only in your browser's localStorage.
+        <a href="https://lite.realtime.nationalrail.co.uk/OpenLDBWSRegistration" target="_blank" rel="noopener noreferrer">Get a Darwin token</a>
+        &middot;
+        <a href="https://api-portal.tfl.gov.uk/" target="_blank" rel="noopener noreferrer">Get a TfL app key</a>
+      </p>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <span id="last-updated"></span>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
