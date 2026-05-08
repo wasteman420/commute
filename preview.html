@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0f172a">
+  <title>Commute &middot; style preview</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="v/brutalist.css" id="theme-brutalist">
+  <link rel="stylesheet" href="v/board.css"     id="theme-board"     disabled>
+  <link rel="stylesheet" href="v/glass.css"     id="theme-glass"     disabled>
+  <link rel="stylesheet" href="v/compact.css"   id="theme-compact"   disabled>
+  <link rel="stylesheet" href="styles.css"      id="theme-current"   disabled>
+  <style>
+    /* Style-switcher chrome — sits above the live page, not styled by any theme */
+    .style-switcher {
+      position: sticky; top: 0; z-index: 100;
+      display: flex; gap: 4px; padding: 8px;
+      background: rgba(0, 0, 0, 0.78);
+      -webkit-backdrop-filter: blur(12px);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid #2a2a2a;
+      overflow-x: auto;
+      font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 12px;
+      color: #ddd;
+      -webkit-overflow-scrolling: touch;
+    }
+    .style-switcher::-webkit-scrollbar { display: none; }
+    .style-switcher .label {
+      align-self: center;
+      color: #888;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.18em;
+      padding: 0 6px 0 2px;
+      white-space: nowrap;
+    }
+    .style-switcher button {
+      background: transparent;
+      color: #ddd;
+      border: 1px solid #444;
+      padding: 6px 12px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 12px;
+      white-space: nowrap;
+      border-radius: 4px;
+      transition: background 100ms, color 100ms, border-color 100ms;
+    }
+    .style-switcher button:hover { border-color: #888; }
+    .style-switcher button.active {
+      background: #fff;
+      color: #000;
+      border-color: #fff;
+    }
+  </style>
+</head>
+<body>
+  <nav class="style-switcher" aria-label="Theme picker">
+    <span class="label">Theme:</span>
+    <button data-theme="brutalist" class="active">Brutalist</button>
+    <button data-theme="board">Board</button>
+    <button data-theme="glass">Glass</button>
+    <button data-theme="compact">Compact</button>
+    <button data-theme="current">Current</button>
+  </nav>
+
+  <header class="topbar">
+    <h1>Commute</h1>
+    <div class="topbar-right">
+      <span class="countdown" id="countdown" title="Next refresh">--s</span>
+      <button id="refresh-btn" class="icon-btn" aria-label="Refresh now" title="Refresh now">&#x21bb;</button>
+    </div>
+  </header>
+
+  <section class="status-bar" id="status-bar" aria-label="Line status">
+    <div class="status-skeleton"></div>
+    <div class="status-skeleton"></div>
+    <div class="status-skeleton"></div>
+  </section>
+
+  <section class="section">
+    <h2>Tram from Arena</h2>
+    <div class="two-col">
+      <div class="col">
+        <h3>&rarr; East Croydon <span class="sub">Wimbledon / Therapia Lane</span></h3>
+        <div class="rows" id="tram-ecr" data-skeleton="5"></div>
+      </div>
+      <div class="col">
+        <h3>&rarr; Beckenham Junction</h3>
+        <div class="rows" id="tram-bkj" data-skeleton="5"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>National Rail to Victoria</h2>
+    <div class="two-col">
+      <div class="col">
+        <h3>ECR &rarr; VIC</h3>
+        <div class="rows" id="rail-ecr" data-skeleton="5"></div>
+      </div>
+      <div class="col">
+        <h3>BKJ &rarr; VIC</h3>
+        <div class="rows" id="rail-bkj" data-skeleton="5"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>From Victoria</h2>
+    <div class="two-col">
+      <div class="col">
+        <h3>52 bus <span class="sub">to Royal Albert Hall</span></h3>
+        <div class="rows" id="bus-52" data-skeleton="5"></div>
+      </div>
+      <div class="col">
+        <h3>District / Circle <span class="sub">to S. Ken + walk to RAH</span></h3>
+        <div class="rows" id="tube-vic" data-skeleton="5"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="settings">
+    <button class="settings-toggle" id="settings-toggle" aria-expanded="false" aria-controls="settings-panel">
+      <span>Settings</span>
+      <span class="chev">&#x25be;</span>
+    </button>
+    <div class="settings-panel" id="settings-panel" hidden>
+      <label class="field">
+        <span>Darwin token <em>National Rail</em></span>
+        <input type="text" id="darwin-token" autocomplete="off" spellcheck="false" placeholder="00000000-0000-0000-0000-000000000000">
+      </label>
+      <label class="field">
+        <span>TfL app key <em>optional</em></span>
+        <input type="text" id="tfl-key" autocomplete="off" spellcheck="false" placeholder="leave blank for unauthenticated access">
+      </label>
+      <div class="settings-actions">
+        <button id="save-settings" class="primary">Save</button>
+        <button id="clear-cache" class="ghost" title="Clear cached Arena stop ID">Clear cache</button>
+      </div>
+      <p class="hint">
+        Stored only in your browser's localStorage.
+        <a href="https://lite.realtime.nationalrail.co.uk/OpenLDBWSRegistration" target="_blank" rel="noopener noreferrer">Get a Darwin token</a>
+        &middot;
+        <a href="https://api-portal.tfl.gov.uk/" target="_blank" rel="noopener noreferrer">Get a TfL app key</a>
+      </p>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <span id="last-updated"></span>
+  </footer>
+
+  <script>
+    (function () {
+      const THEMES = ['brutalist', 'board', 'glass', 'compact', 'current'];
+      const LS_KEY = 'commute.previewTheme';
+      const initial = localStorage.getItem(LS_KEY) || 'brutalist';
+
+      function setTheme(name) {
+        if (!THEMES.includes(name)) name = 'brutalist';
+        THEMES.forEach(t => {
+          const link = document.getElementById('theme-' + t);
+          if (link) link.disabled = (t !== name);
+        });
+        document.querySelectorAll('.style-switcher button').forEach(b => {
+          b.classList.toggle('active', b.dataset.theme === name);
+        });
+        try { localStorage.setItem(LS_KEY, name); } catch (_) {}
+      }
+
+      setTheme(initial);
+      document.querySelectorAll('.style-switcher button').forEach(b => {
+        b.addEventListener('click', () => setTheme(b.dataset.theme));
+      });
+    })();
+  </script>
+  <script src="app.js"></script>
+</body>
+</html>
