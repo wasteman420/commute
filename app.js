@@ -19,6 +19,9 @@
     BUS_52_VIC_TO_RAH_MIN: 14,
     TUBE_VIC_TO_SOUTH_KEN_MIN: 7,
 
+    // Fixed walks (not live-trackable)
+    WALK_SKS_TO_RAH_MIN: 11,
+
     // Refresh cadences (ms)
     TFL_REFRESH_MS: 60_000,
     HUXLEY_REFRESH_MS: 90_000,
@@ -312,8 +315,10 @@
     return name; // e.g. "Stop A"
   }
 
-  // Generic "from Vic to final stop" renderer with vehicleId journey-time match
-  function renderFinalLegColumn(containerId, fromArrivals, finalArrivals, fallbackMin, finalLabel) {
+  // Generic "from Vic to final stop" renderer with vehicleId journey-time match.
+  // walkMin is added to the arrival ETA but NOT to the live journey chip
+  // (the chip stays a "live trackable" signal; the walk is a fixed addition).
+  function renderFinalLegColumn(containerId, fromArrivals, finalArrivals, fallbackMin, finalLabel, walkMin = 0) {
     const el = document.getElementById(containerId);
     if (!el) return;
     if (!fromArrivals.length) {
@@ -329,7 +334,7 @@
       const live = liveJourneyMin(a, finalArrivals);
       const journey = live != null ? live : fallbackMin;
       const isLive = live != null;
-      const arr = new Date(t.getTime() + journey * 60000);
+      const arr = new Date(t.getTime() + (journey + walkMin) * 60000);
       return (
         '<div class="row">' +
           '<div class="time">' + escapeHtml(fmtClock(t)) + '</div>' +
@@ -340,6 +345,7 @@
             '<span class="jt' + (isLive ? '' : ' fallback') + '">' +
               (isLive ? '' : '~') + journey + 'm' +
             '</span>' +
+            (walkMin > 0 ? '<span class="jt fallback">+' + walkMin + 'm walk</span>' : '') +
             '<span class="arr">&rarr; ' + escapeHtml(finalLabel) + ' ' + escapeHtml(fmtClock(arr)) + '</span>' +
           '</div>' +
         '</div>'
@@ -447,7 +453,7 @@
       const sksArrs = result.sksTube.status === 'fulfilled'
         ? (result.sksTube.value || []).filter(a => a.lineId === 'district' || a.lineId === 'circle')
         : [];
-      renderFinalLegColumn('tube-vic', vicArrs, sksArrs, CONFIG.TUBE_VIC_TO_SOUTH_KEN_MIN, 'S. Ken');
+      renderFinalLegColumn('tube-vic', vicArrs, sksArrs, CONFIG.TUBE_VIC_TO_SOUTH_KEN_MIN, 'RAH', CONFIG.WALK_SKS_TO_RAH_MIN);
     } else {
       renderError('tube-vic', 'Could not load tube arrivals');
     }
