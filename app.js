@@ -15,6 +15,10 @@
     TRANSFER_VIC_TO_BUS_MIN: 4,
     TRANSFER_VIC_TO_TUBE_MIN: 5,
 
+    // Final-leg journey-time fallbacks (used only when vehicleId match fails)
+    BUS_52_VIC_TO_RAH_MIN: 14,
+    TUBE_VIC_TO_SOUTH_KEN_MIN: 7,
+
     // Refresh cadences (ms)
     TFL_REFRESH_MS: 60_000,
     HUXLEY_REFRESH_MS: 90_000,
@@ -33,6 +37,7 @@
     ECR_TRAM: '940GZZCRECR',
     BKJ_TRAM: '940GZZCRBEK',
     VIC_TUBE: '940GZZLUVIC',
+    SKS_TUBE: '940GZZLUSKS', // South Kensington
   };
 
   const LS = {
@@ -98,6 +103,22 @@
     return String(s ?? '').replace(/[&<>"']/g, c => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
     }[c]));
+  }
+
+  function findCallingPoint(service, crs) {
+    const portions = (service && service.subsequentCallingPoints) || [];
+    for (const p of portions) {
+      const cp = (p.callingPoint || []).find(c => c && c.crs === crs);
+      if (cp) return cp;
+    }
+    return null;
+  }
+
+  function callingPointTime(cp) {
+    if (!cp) return null;
+    if (typeof cp.et === 'string' && /^\d{1,2}:\d{2}$/.test(cp.et)) return cp.et;
+    if (typeof cp.st === 'string' && /^\d{1,2}:\d{2}$/.test(cp.st)) return cp.st;
+    return null;
   }
 
   // ------------------------------------------------------------------
@@ -266,6 +287,10 @@
       const minsHtml = (mins == null)
         ? ''
         : '<span class="mins">' + (mins === 0 ? 'due' : 'in ' + mins + 'm') + '</span>';
+      const arrAtVic = cancelled ? null : callingPointTime(findCallingPoint(s, 'VIC'));
+      const arrHtml = arrAtVic
+        ? '<span class="arr">&rarr; VIC ' + escapeHtml(arrAtVic) + '</span>'
+        : '';
       return (
         '<div class="row' + (cancelled ? ' cancelled' : '') + '">' +
           '<div class="time">' + escapeHtml(timeStr) + '</div>' +
@@ -273,6 +298,7 @@
           '<div class="meta">' +
             minsHtml +
             '<span class="pl">' + escapeHtml(platform) + '</span>' +
+            arrHtml +
           '</div>' +
         '</div>'
       );
@@ -286,24 +312,24 @@
     return name; // e.g. "Stop A"
   }
 
-  function renderTfLArrivalColumn(containerId, arrivals, transferMin) {
+  // Generic "from Vic to final stop" renderer with vehicleId journey-time match
+  function renderFinalLegColumn(containerId, fromArrivals, finalArrivals, fallbackMin, finalLabel) {
     const el = document.getElementById(containerId);
     if (!el) return;
-    if (!arrivals.length) {
+    if (!fromArrivals.length) {
       renderEmpty(containerId, 'No departures in the next hour');
       return;
     }
-    el.innerHTML = arrivals.slice(0, CONFIG.DEPARTURE_COUNT).map(a => {
+    el.innerHTML = fromArrivals.slice(0, CONFIG.DEPARTURE_COUNT).map(a => {
       const t = new Date(a.expectedArrival);
       const mins = minsUntil(t);
       const dest = a.destinationName || a.towards || a.lineName || '';
       const platform = shortPlatform(a.platformName);
       const platHtml = platform ? '<span class="pl">' + escapeHtml(platform) + '</span>' : '';
-      // "leave by HH:MM" = latest you can leave the Victoria concourse to make this departure
-      const leaveBy = new Date(t.getTime() - transferMin * 60000);
-      const leaveHtml = (leaveBy.getTime() > Date.now())
-        ? '<span class="arr">leave by ' + escapeHtml(fmtClock(leaveBy)) + '</span>'
-        : '<span class="arr" style="color:var(--bad)">missed</span>';
+      const live = liveJourneyMin(a, finalArrivals);
+      const journey = live != null ? live : fallbackMin;
+      const isLive = live != null;
+      const arr = new Date(t.getTime() + journey * 60000);
       return (
         '<div class="row">' +
           '<div class="time">' + escapeHtml(fmtClock(t)) + '</div>' +
@@ -311,7 +337,10 @@
           '<div class="meta">' +
             '<span class="mins">' + (mins === 0 ? 'due' : 'in ' + mins + 'm') + '</span>' +
             platHtml +
-            leaveHtml +
+            '<span class="jt' + (isLive ? '' : ' fallback') + '">' +
+              (isLive ? '' : '~') + journey + 'm' +
+            '</span>' +
+            '<span class="arr">&rarr; ' + escapeHtml(finalLabel) + ' ' + escapeHtml(fmtClock(arr)) + '</span>' +
           '</div>' +
         '</div>'
       );
@@ -370,6 +399,7 @@
       ecrTram: tflUrl('/StopPoint/' + STOP_IDS.ECR_TRAM + '/Arrivals'),
       bkjTram: tflUrl('/StopPoint/' + STOP_IDS.BKJ_TRAM + '/Arrivals'),
       vicTube: tflUrl('/StopPoint/' + STOP_IDS.VIC_TUBE + '/Arrivals'),
+      sksTube: tflUrl('/StopPoint/' + STOP_IDS.SKS_TUBE + '/Arrivals'),
       bus52:   tflUrl('/Line/52/Arrivals'),
       status:  tflUrl('/Line/tram,district,circle/Status'),
     };
@@ -409,22 +439,28 @@
       renderError('tram-bkj', 'Could not load Arena arrivals');
     }
 
-    // Victoria tube
+    // Victoria tube → South Kensington
     if (result.vicTube.status === 'fulfilled') {
-      const arrs = (result.vicTube.value || [])
+      const vicArrs = (result.vicTube.value || [])
         .filter(isWestboundDistrictCircle)
         .sort(sortByExpected);
-      renderTfLArrivalColumn('tube-vic', arrs, CONFIG.TRANSFER_VIC_TO_TUBE_MIN);
+      const sksArrs = result.sksTube.status === 'fulfilled'
+        ? (result.sksTube.value || []).filter(a => a.lineId === 'district' || a.lineId === 'circle')
+        : [];
+      renderFinalLegColumn('tube-vic', vicArrs, sksArrs, CONFIG.TUBE_VIC_TO_SOUTH_KEN_MIN, 'S. Ken');
     } else {
       renderError('tube-vic', 'Could not load tube arrivals');
     }
 
-    // 52 bus
+    // 52 bus → Royal Albert Hall
     if (result.bus52.status === 'fulfilled') {
-      const arrs = (result.bus52.value || [])
-        .filter(isBus52OutboundFromVictoria)
-        .sort(sortByExpected);
-      renderTfLArrivalColumn('bus-52', arrs, CONFIG.TRANSFER_VIC_TO_BUS_MIN);
+      const all = result.bus52.value || [];
+      const vicArrs = all.filter(isBus52OutboundFromVictoria).sort(sortByExpected);
+      const rahArrs = all.filter(a =>
+        (a.stationName || '').toLowerCase().includes('royal albert hall') &&
+        !(a.towards || '').toLowerCase().includes('victoria')
+      );
+      renderFinalLegColumn('bus-52', vicArrs, rahArrs, CONFIG.BUS_52_VIC_TO_RAH_MIN, 'RAH');
     } else {
       renderError('bus-52', 'Could not load 52 bus arrivals');
     }
