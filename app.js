@@ -56,20 +56,6 @@
   const EAST_BLOCKLIST = ['upminster', 'barking', 'tower hill', 'aldgate', 'dagenham', 'plaistow', 'whitechapel'];
 
   // ------------------------------------------------------------------
-  // Shared state — fetchers update slots, renderAll() composes the chain
-  // ------------------------------------------------------------------
-  const state = {
-    arena:   { arrs: null, error: null },
-    ecrTram: { arrs: [] },
-    bkjTram: { arrs: [] },
-    vicTube: { arrs: null, error: null },
-    sksTube: { arrs: [] },
-    bus52:   { all: null,  error: null },
-    railECR: { services: null, error: null, placeholder: false },
-    railBKJ: { services: null, error: null, placeholder: false },
-  };
-
-  // ------------------------------------------------------------------
   // Helpers
   // ------------------------------------------------------------------
   const $ = (sel, root = document) => root.querySelector(sel);
@@ -136,65 +122,6 @@
     if (typeof cp.et === 'string' && /^\d{1,2}:\d{2}$/.test(cp.et)) return cp.et;
     if (typeof cp.st === 'string' && /^\d{1,2}:\d{2}$/.test(cp.st)) return cp.st;
     return null;
-  }
-
-  // ------------------------------------------------------------------
-  // Chain-time helpers (compute "earliest catchable" times across legs)
-  // ------------------------------------------------------------------
-
-  // Soonest chained arrival at the destination (e.g. ECR/BKJ) given the next
-  // tram from Arena: tram's expected arrival + journey-time + transfer.
-  function soonestChainTime(arenaArrs, destArrs, fallbackMin, transferMin) {
-    if (!arenaArrs || !arenaArrs.length) return null;
-    const a = arenaArrs[0];
-    const arenaTime = new Date(a.expectedArrival);
-    if (isNaN(arenaTime)) return null;
-    const live = liveJourneyMin(a, destArrs || []);
-    const journey = live != null ? live : fallbackMin;
-    return new Date(arenaTime.getTime() + (journey + transferMin) * 60000);
-  }
-
-  // Best estimate of when a Huxley service actually departs (etd if live, else std).
-  function railServiceTime(s) {
-    if (!s) return null;
-    if (s.etd === 'Cancelled') return null;
-    const t = (typeof s.etd === 'string' && /^\d{1,2}:\d{2}$/.test(s.etd)) ? s.etd
-            : (typeof s.std === 'string' && /^\d{1,2}:\d{2}$/.test(s.std)) ? s.std
-            : null;
-    return t ? parseHHMM(t) : null;
-  }
-
-  function filterRailCatchable(services, earliest) {
-    if (!services) return null;
-    if (!earliest) return services;
-    return services.filter(s => {
-      // For cancelled trains, fall back to scheduled time so they still surface in the user's window.
-      const t = (s.etd === 'Cancelled') ? parseHHMM(s.std) : railServiceTime(s);
-      if (!t) return false;
-      return t.getTime() >= earliest.getTime();
-    });
-  }
-
-  function earliestVicArrival(...serviceLists) {
-    let min = null;
-    for (const list of serviceLists) {
-      for (const s of (list || [])) {
-        if (!s || s.etd === 'Cancelled') continue;
-        const t = callingPointTime(findCallingPoint(s, 'VIC'));
-        if (!t) continue;
-        const d = parseHHMM(t);
-        if (!d) continue;
-        const ms = d.getTime();
-        if (min == null || ms < min) min = ms;
-      }
-    }
-    return min == null ? null : new Date(min);
-  }
-
-  function filterArrivalsByTime(arrs, minTime) {
-    if (!arrs) return null;
-    if (!minTime) return arrs;
-    return arrs.filter(a => Date.parse(a.expectedArrival) >= minTime.getTime());
   }
 
   // ------------------------------------------------------------------
@@ -447,95 +374,6 @@
     }).join('');
   }
 
-  // ------------------------------------------------------------------
-  // renderAll — compose chain timings from state, render every board
-  // ------------------------------------------------------------------
-  function renderAll() {
-    // ===== Trams =====
-    if (state.arena.error) {
-      renderError('tram-ecr', state.arena.error);
-      renderError('tram-bkj', state.arena.error);
-    } else if (state.arena.arrs != null) {
-      const arrs = state.arena.arrs;
-      const showECR = arrs.filter(isTramTowardsECR).slice(0, CONFIG.DEPARTURE_COUNT);
-      const showBKJ = arrs.filter(isTramTowardsBKJ).slice(0, CONFIG.DEPARTURE_COUNT);
-      renderTramColumn('tram-ecr', showECR, state.ecrTram.arrs || [],
-        CONFIG.TRAM_FALLBACK_ARENA_TO_ECR_MIN, CONFIG.TRANSFER_ECR_TRAM_TO_RAIL_MIN, 'ECR');
-      renderTramColumn('tram-bkj', showBKJ, state.bkjTram.arrs || [],
-        CONFIG.TRAM_FALLBACK_ARENA_TO_BKJ_MIN, CONFIG.TRANSFER_BKJ_TRAM_TO_RAIL_MIN, 'BKJ');
-    }
-
-    // ===== Earliest catchable arrival at ECR / BKJ =====
-    const arenaArrs = state.arena.arrs || [];
-    const towardsECRAll = arenaArrs.filter(isTramTowardsECR);
-    const towardsBKJAll = arenaArrs.filter(isTramTowardsBKJ);
-    const earliestECR = soonestChainTime(towardsECRAll, state.ecrTram.arrs,
-      CONFIG.TRAM_FALLBACK_ARENA_TO_ECR_MIN, CONFIG.TRANSFER_ECR_TRAM_TO_RAIL_MIN);
-    const earliestBKJ = soonestChainTime(towardsBKJAll, state.bkjTram.arrs,
-      CONFIG.TRAM_FALLBACK_ARENA_TO_BKJ_MIN, CONFIG.TRANSFER_BKJ_TRAM_TO_RAIL_MIN);
-
-    // ===== Rail =====
-    const ecrFiltered = renderRailBoard('rail-ecr', state.railECR, earliestECR);
-    const bkjFiltered = renderRailBoard('rail-bkj', state.railBKJ, earliestBKJ);
-
-    // ===== Earliest catchable arrival at VIC =====
-    const earliestVIC = earliestVicArrival(ecrFiltered, bkjFiltered);
-    const earliestForBus  = earliestVIC ? new Date(earliestVIC.getTime() + CONFIG.TRANSFER_VIC_TO_BUS_MIN  * 60000) : null;
-    const earliestForTube = earliestVIC ? new Date(earliestVIC.getTime() + CONFIG.TRANSFER_VIC_TO_TUBE_MIN * 60000) : null;
-
-    // ===== Final leg: Bus 52 from Victoria =====
-    if (state.bus52.error) {
-      renderError('bus-52', state.bus52.error);
-    } else if (state.bus52.all != null) {
-      const all = state.bus52.all;
-      const vicArrs = all.filter(isBus52OutboundFromVictoria).sort(sortByExpected);
-      const filtered = filterArrivalsByTime(vicArrs, earliestForBus);
-      const rahArrs = all.filter(a =>
-        (a.stationName || '').toLowerCase().includes('royal albert hall') &&
-        !(a.towards || '').toLowerCase().includes('victoria')
-      );
-      if (!filtered.length && earliestForBus) {
-        renderEmpty('bus-52', 'No catchable buses');
-      } else {
-        renderFinalLegColumn('bus-52', filtered, rahArrs, CONFIG.BUS_52_VIC_TO_RAH_MIN, 'RAH');
-      }
-    }
-
-    // ===== Final leg: District/Circle from Victoria =====
-    if (state.vicTube.error) {
-      renderError('tube-vic', state.vicTube.error);
-    } else if (state.vicTube.arrs != null) {
-      const filtered = filterArrivalsByTime(state.vicTube.arrs, earliestForTube);
-      if (!filtered.length && earliestForTube) {
-        renderEmpty('tube-vic', 'No catchable tubes');
-      } else {
-        renderFinalLegColumn('tube-vic', filtered, state.sksTube.arrs || [],
-          CONFIG.TUBE_VIC_TO_SOUTH_KEN_MIN, 'RAH', CONFIG.WALK_SKS_TO_RAH_MIN);
-      }
-    }
-  }
-
-  // Render a single rail board and return the catchable services it actually shows
-  // (used to compute the next-leg chain time).
-  function renderRailBoard(containerId, slot, earliest) {
-    if (slot.placeholder) {
-      renderRailPlaceholder(containerId);
-      return null;
-    }
-    if (slot.error) {
-      renderError(containerId, slot.error);
-      return null;
-    }
-    if (slot.services == null) return null; // still loading
-    const filtered = filterRailCatchable(slot.services, earliest);
-    if (!filtered.length && earliest) {
-      renderEmpty(containerId, 'No catchable trains');
-      return filtered;
-    }
-    renderRailColumn(containerId, filtered);
-    return filtered;
-  }
-
   function renderStatusError() {
     const el = $('#status-bar');
     if (!el) return;
@@ -558,8 +396,7 @@
       arenaId = await getArenaStopId();
     } catch (e) {
       console.error('Arena lookup failed', e);
-      state.arena = { arrs: null, error: 'Could not find Arena stop' };
-      renderAll();
+      ['tram-ecr', 'tram-bkj'].forEach(id => renderError(id, 'Could not find Arena stop'));
       return;
     }
 
@@ -577,58 +414,75 @@
     const result = {};
     Object.keys(urls).forEach((k, i) => { result[k] = settled[i]; });
 
-    // Status (rendered directly — not part of the chain)
+    // Status
     if (result.status.status === 'fulfilled') {
       renderStatusBar(result.status.value);
     } else {
       renderStatusError();
     }
 
-    // Arena trams
-    if (result.arena.status === 'fulfilled') {
-      state.arena = { arrs: (result.arena.value || []).slice().sort(sortByExpected), error: null };
+    // Arena trams (need both arena + dest stops)
+    const arenaOk = result.arena.status === 'fulfilled';
+    const ecrOk = result.ecrTram.status === 'fulfilled';
+    const bkjOk = result.bkjTram.status === 'fulfilled';
+
+    if (arenaOk) {
+      const arenaArrs = (result.arena.value || []).slice().sort(sortByExpected);
+      const ecrArrs = ecrOk ? (result.ecrTram.value || []) : [];
+      const bkjArrs = bkjOk ? (result.bkjTram.value || []) : [];
+
+      const towardsECR = arenaArrs.filter(isTramTowardsECR).slice(0, CONFIG.DEPARTURE_COUNT);
+      const towardsBKJ = arenaArrs.filter(isTramTowardsBKJ).slice(0, CONFIG.DEPARTURE_COUNT);
+
+      renderTramColumn('tram-ecr', towardsECR, ecrArrs,
+        CONFIG.TRAM_FALLBACK_ARENA_TO_ECR_MIN,
+        CONFIG.TRANSFER_ECR_TRAM_TO_RAIL_MIN, 'ECR');
+      renderTramColumn('tram-bkj', towardsBKJ, bkjArrs,
+        CONFIG.TRAM_FALLBACK_ARENA_TO_BKJ_MIN,
+        CONFIG.TRANSFER_BKJ_TRAM_TO_RAIL_MIN, 'BKJ');
     } else {
-      state.arena = { arrs: null, error: 'Could not load Arena arrivals' };
+      renderError('tram-ecr', 'Could not load Arena arrivals');
+      renderError('tram-bkj', 'Could not load Arena arrivals');
     }
-    state.ecrTram.arrs = result.ecrTram.status === 'fulfilled' ? (result.ecrTram.value || []) : [];
-    state.bkjTram.arrs = result.bkjTram.status === 'fulfilled' ? (result.bkjTram.value || []) : [];
 
     // Victoria tube → South Kensington
     if (result.vicTube.status === 'fulfilled') {
-      state.vicTube = {
-        arrs: (result.vicTube.value || []).filter(isWestboundDistrictCircle).sort(sortByExpected),
-        error: null,
-      };
+      const vicArrs = (result.vicTube.value || [])
+        .filter(isWestboundDistrictCircle)
+        .sort(sortByExpected);
+      const sksArrs = result.sksTube.status === 'fulfilled'
+        ? (result.sksTube.value || []).filter(a => a.lineId === 'district' || a.lineId === 'circle')
+        : [];
+      renderFinalLegColumn('tube-vic', vicArrs, sksArrs, CONFIG.TUBE_VIC_TO_SOUTH_KEN_MIN, 'RAH', CONFIG.WALK_SKS_TO_RAH_MIN);
     } else {
-      state.vicTube = { arrs: null, error: 'Could not load tube arrivals' };
+      renderError('tube-vic', 'Could not load tube arrivals');
     }
-    state.sksTube.arrs = result.sksTube.status === 'fulfilled'
-      ? (result.sksTube.value || []).filter(a => a.lineId === 'district' || a.lineId === 'circle')
-      : [];
 
-    // 52 bus
+    // 52 bus → Royal Albert Hall
     if (result.bus52.status === 'fulfilled') {
-      state.bus52 = { all: result.bus52.value || [], error: null };
+      const all = result.bus52.value || [];
+      const vicArrs = all.filter(isBus52OutboundFromVictoria).sort(sortByExpected);
+      const rahArrs = all.filter(a =>
+        (a.stationName || '').toLowerCase().includes('royal albert hall') &&
+        !(a.towards || '').toLowerCase().includes('victoria')
+      );
+      renderFinalLegColumn('bus-52', vicArrs, rahArrs, CONFIG.BUS_52_VIC_TO_RAH_MIN, 'RAH');
     } else {
-      state.bus52 = { all: null, error: 'Could not load 52 bus arrivals' };
+      renderError('bus-52', 'Could not load 52 bus arrivals');
     }
 
-    renderAll();
     setLastUpdated();
   }
 
   async function fetchHuxley() {
     const token = getDarwin();
     if (!token) {
-      state.railECR = { services: null, error: null, placeholder: true };
-      state.railBKJ = { services: null, error: null, placeholder: true };
-      renderAll();
+      renderRailPlaceholder('rail-ecr');
+      renderRailPlaceholder('rail-bkj');
       return;
     }
-    // Fetch a generous window since chain-filtering may discard many earlier services.
-    const huxleyCount = Math.max(15, CONFIG.DEPARTURE_COUNT * 3);
     const url = (from, to) =>
-      `${HUXLEY_BASE}/departures/${from}/to/${to}/${huxleyCount}?accessToken=${encodeURIComponent(token)}`;
+      `${HUXLEY_BASE}/departures/${from}/to/${to}/${CONFIG.DEPARTURE_COUNT}?accessToken=${encodeURIComponent(token)}`;
 
     const [ecr, bkj] = await Promise.allSettled([
       fetchJson(url('ECR', 'VIC')),
@@ -636,34 +490,19 @@
     ]);
 
     if (ecr.status === 'fulfilled') {
-      state.railECR = {
-        services: (ecr.value && ecr.value.trainServices) || [],
-        error: null,
-        placeholder: false,
-      };
+      const services = (ecr.value && ecr.value.trainServices) || [];
+      renderRailColumn('rail-ecr', services);
     } else {
-      state.railECR = {
-        services: null,
-        error: 'Could not load ECR departures (check Darwin token)',
-        placeholder: false,
-      };
+      renderError('rail-ecr', 'Could not load ECR departures (check Darwin token)');
     }
 
     if (bkj.status === 'fulfilled') {
-      state.railBKJ = {
-        services: (bkj.value && bkj.value.trainServices) || [],
-        error: null,
-        placeholder: false,
-      };
+      const services = (bkj.value && bkj.value.trainServices) || [];
+      renderRailColumn('rail-bkj', services);
     } else {
-      state.railBKJ = {
-        services: null,
-        error: 'Could not load BKJ departures (check Darwin token)',
-        placeholder: false,
-      };
+      renderError('rail-bkj', 'Could not load BKJ departures (check Darwin token)');
     }
 
-    renderAll();
     setLastUpdated();
   }
 
