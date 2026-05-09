@@ -12,10 +12,67 @@
   <link rel="apple-touch-icon" href="icon-192.png">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="icon" href="icon-192.png" type="image/png" sizes="192x192">
-  <link rel="stylesheet" href="styles.css">
   <title>Commute</title>
+  <link rel="stylesheet" href="v/brutalist.css" id="theme-brutalist">
+  <link rel="stylesheet" href="v/board.css"     id="theme-board"     disabled>
+  <link rel="stylesheet" href="v/glass.css"     id="theme-glass"     disabled>
+  <link rel="stylesheet" href="v/compact.css"   id="theme-compact"   disabled>
+  <link rel="stylesheet" href="styles.css"      id="theme-current"   disabled>
+  <style>
+    /* Style-switcher chrome — sits above the live page, not styled by any theme */
+    .style-switcher {
+      position: sticky; top: 0; z-index: 100;
+      display: flex; gap: 4px; padding: 8px;
+      background: rgba(0, 0, 0, 0.78);
+      -webkit-backdrop-filter: blur(12px);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid #2a2a2a;
+      overflow-x: auto;
+      font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 12px;
+      color: #ddd;
+      -webkit-overflow-scrolling: touch;
+    }
+    .style-switcher::-webkit-scrollbar { display: none; }
+    .style-switcher .label {
+      align-self: center;
+      color: #888;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.18em;
+      padding: 0 6px 0 2px;
+      white-space: nowrap;
+    }
+    .style-switcher button {
+      background: transparent;
+      color: #ddd;
+      border: 1px solid #444;
+      padding: 6px 12px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 12px;
+      white-space: nowrap;
+      border-radius: 4px;
+      transition: background 100ms, color 100ms, border-color 100ms;
+    }
+    .style-switcher button:hover { border-color: #888; }
+    .style-switcher button.active {
+      background: #fff;
+      color: #000;
+      border-color: #fff;
+    }
+  </style>
 </head>
 <body>
+  <nav class="style-switcher" aria-label="Theme picker">
+    <span class="label">Theme:</span>
+    <button data-theme="brutalist" class="active">Brutalist</button>
+    <button data-theme="board">Board</button>
+    <button data-theme="glass">Glass</button>
+    <button data-theme="compact">Compact</button>
+    <button data-theme="current">Current</button>
+  </nav>
+
   <header class="topbar">
     <h1>Commute</h1>
     <div class="topbar-right">
@@ -103,6 +160,30 @@
     <span id="last-updated"></span>
   </footer>
 
+  <script>
+    (function () {
+      const THEMES = ['brutalist', 'board', 'glass', 'compact', 'current'];
+      const LS_KEY = 'commute.previewTheme';
+      const initial = localStorage.getItem(LS_KEY) || 'brutalist';
+
+      function setTheme(name) {
+        if (!THEMES.includes(name)) name = 'brutalist';
+        THEMES.forEach(t => {
+          const link = document.getElementById('theme-' + t);
+          if (link) link.disabled = (t !== name);
+        });
+        document.querySelectorAll('.style-switcher button').forEach(b => {
+          b.classList.toggle('active', b.dataset.theme === name);
+        });
+        try { localStorage.setItem(LS_KEY, name); } catch (_) {}
+      }
+
+      setTheme(initial);
+      document.querySelectorAll('.style-switcher button').forEach(b => {
+        b.addEventListener('click', () => setTheme(b.dataset.theme));
+      });
+    })();
+  </script>
   <script src="app.js"></script>
 </body>
 </html>
