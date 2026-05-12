@@ -148,8 +148,12 @@
   }
 
   function isTramTowardsECR(a) {
+    // From Arena there are only two directions; anything not towards Beckenham
+    // Junction is westbound and passes through East Croydon. This catches
+    // West Croydon, East Croydon (short-working), Wimbledon, Therapia Lane, etc.
     const t = destText(a);
-    return t.includes('wimbledon') || t.includes('therapia');
+    if (!t.trim()) return false;
+    return !t.includes('beckenham');
   }
   function isTramTowardsBKJ(a) {
     return destText(a).includes('beckenham');
