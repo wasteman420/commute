@@ -147,18 +147,16 @@
     return ((a.destinationName || '') + ' ' + (a.towards || '')).toLowerCase();
   }
 
-  // Westbound from Arena heads to Wimbledon, West/East Croydon, Therapia Lane,
-  // or (rarely) New Addington — all pass through East Croydon. Anything else
-  // with a destination must be eastbound to Beckenham Junction.
-  const WESTBOUND_TERMINI = /wimbledon|therapia|croydon|addington/;
-
   function isTramTowardsECR(a) {
-    return WESTBOUND_TERMINI.test(destText(a));
-  }
-  function isTramTowardsBKJ(a) {
+    // From Arena there are only two directions; anything not towards Beckenham
+    // Junction is westbound and passes through East Croydon. This catches
+    // West Croydon, East Croydon (short-working), Wimbledon, Therapia Lane, etc.
     const t = destText(a);
     if (!t.trim()) return false;
-    return !WESTBOUND_TERMINI.test(t);
+    return !t.includes('beckenham');
+  }
+  function isTramTowardsBKJ(a) {
+    return destText(a).includes('beckenham');
   }
 
   function isWestboundDistrictCircle(a) {
